@@ -22,3 +22,5 @@ SQLAlchemy==2.0.47
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 yarl==1.22.0
+Flask
+aiosqlite
