@@ -18,6 +18,8 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 from dotenv import load_dotenv
+from flask import Flask
+from threading import Thread
 
 from sqlalchemy import String, BigInteger, DateTime, Enum
 from openpyxl import Workbook
@@ -30,6 +32,15 @@ from sqlalchemy.ext.asyncio import (
 )
 
 load_dotenv()
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Bot is running"
+
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
 
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
@@ -322,4 +333,5 @@ async def main():
 
 
 if __name__ == "__main__":
+    Thread(target=run_web).start()
     asyncio.run(main())
