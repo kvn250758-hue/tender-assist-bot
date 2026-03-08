@@ -75,20 +75,6 @@ class LeadStatus(enum.Enum):
     rejected = "rejected"
 
 
-class LeadStatus(enum.Enum):
-    new = "new"
-    in_progress = "in_progress"
-    closed = "closed"
-    rejected = "rejected"
-
-
-class LeadStatus(enum.Enum):
-    new = "new"
-    in_progress = "in_progress"
-    closed = "closed"
-    rejected = "rejected"
-
-
 class User(Base):
     __tablename__ = "users"
 
@@ -218,6 +204,34 @@ def is_admin(user_id: int) -> bool:
     return user_id == ADMIN_ID
 
 
+@dp.callback_query(F.data.startswith("status_"))
+async def change_status(callback: CallbackQuery):
+
+    if not is_admin(callback.from_user.id):
+        await callback.answer("Нет доступа", show_alert=True)
+        return
+
+    _, user_id, new_status = callback.data.split("_")
+
+    async with SessionLocal() as session:
+        result = await session.execute(
+            select(User).where(User.id == int(user_id))
+        )
+        user = result.scalar()
+
+        if not user:
+            await callback.answer("Лид не найден", show_alert=True)
+            return
+
+        user.status = LeadStatus[new_status]
+        await session.commit()
+
+    await callback.message.edit_text(
+        callback.message.text + f"\n\n✅ Статус обновлён: {new_status}"
+    )
+
+
+    await callback.answer("Статус обновлён")
 @dp.message(Command("leads"))
 async def get_leads(message: Message):
     if not is_admin(message.from_user.id):
