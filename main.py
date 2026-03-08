@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import re
+import requests
 from datetime import datetime
 
 from aiogram import Bot, Dispatcher, F
@@ -21,7 +22,7 @@ from dotenv import load_dotenv
 from flask import Flask
 from threading import Thread
 
-from sqlalchemy import String, BigInteger, DateTime, Enum
+from sqlalchemy import String, BigInteger, DateTime, Enum, select
 from openpyxl import Workbook
 import enum
 
@@ -96,6 +97,49 @@ async def init_db():
         await conn.run_sync(Base.metadata.create_all)
 
 
+Base = declarative_base()
+
+# ===== ФУНКЦИЯ ПОИСКА ТЕНДЕРОВ =====
+
+def search_tenders(keyword):
+
+    url = "https://zakupki.gov.ru/epz/order/extendedsearch/results.html"
+
+    params = {
+        "searchString": keyword
+    }
+
+    try:
+        response = requests.get(url, params=params, timeout=10)
+
+        if response.status_code != 200:
+            return ["Не удалось получить данные о тендерах"]
+
+        text = response.text
+
+        tenders = []
+
+        lines = text.split("\n")
+
+        for line in lines:
+            if "zakupki-card-item__title" in line:
+                clean = re.sub("<.*?>", "", line).strip()
+
+                if len(clean) > 10:
+                    tenders.append(clean)
+
+            if len(tenders) >= 5:
+                break
+
+        if not tenders:
+            return ["Подходящие тендеры не найдены"]
+
+        return tenders
+
+    except Exception:
+        return ["Ошибка при поиске тендеров"]
+
+
 # =========================
 # FSM
 # =========================
@@ -107,9 +151,11 @@ class Form(StatesGroup):
 
 start_keyboard = InlineKeyboardMarkup(
     inline_keyboard=[
-        [InlineKeyboardButton(text="🚀 Начать", callback_data="start_onboarding")]
+        [InlineKeyboardButton(text="🚀 Начать", callback_data="start_onboarding")],
+        [InlineKeyboardButton(text="📊 Получить тендеры", callback_data="get_tenders")]
     ]
 )
+
 
 main_menu = InlineKeyboardMarkup(
     inline_keyboard=[
@@ -132,6 +178,37 @@ async def start_handler(message: Message):
 async def onboarding_start(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer("В какой сфере работает ваша компания?")
     await state.set_state(Form.waiting_for_activity)
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "get_tenders")
+async def get_tenders(callback: CallbackQuery):
+
+    async with SessionLocal() as session:
+        result = await session.execute(
+            select(User).where(User.telegram_id == callback.from_user.id)
+        )
+
+        user = result.scalar()
+
+    if not user:
+        await callback.message.answer(
+            "Сначала заполните анкету через /start"
+        )
+        await callback.answer()
+        return
+
+    await callback.message.answer("🔎 Ищем тендеры...")
+
+    tenders = search_tenders(user.activity)
+
+    text = "📊 Найдены тендеры:\n\n"
+
+    for tender in tenders:
+        text += f"• {tender}\n"
+
+    await callback.message.answer(text)
+
     await callback.answer()
 
 
